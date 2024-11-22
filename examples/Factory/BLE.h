@@ -11,11 +11,12 @@
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
+#include <SD.h>
 
 #define BLE_SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define BLE_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define BLE_DEVICE_NAME     "T-TWR"
-
+#define FILE_NAME           "/received_data.txt"
 
 class BLE
 {
@@ -37,16 +38,24 @@ public:
         }
         _started = true;
         BLEDevice::init(BLE_DEVICE_NAME);
+
+        String macAddress = BLEDevice::getAddress().toString();
+        Serial.print("Device MAC Address: ");
+        Serial.println(macAddress);
+
         BLEServer *pServer = BLEDevice::createServer();
         BLEService *pService = pServer->createService(BLE_SERVICE_UUID);
-        /*BLECharacteristic *pCharacteristic = */
-        pService->createCharacteristic(
+        
+
+        BLECharacteristic *pCharacteristic = pService->createCharacteristic(
             BLE_CHARACTERISTIC_UUID,
             BLECharacteristic::PROPERTY_READ |
-            BLECharacteristic::PROPERTY_WRITE);
+            BLECharacteristic::PROPERTY_WRITE
+        );
+        
+        pCharacteristic->setCallbacks(new BLECallbacks()); // Set callbacks to handle data
 
         pService->start();
-        // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility
         BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
         pAdvertising->addServiceUUID(BLE_SERVICE_UUID);
         pAdvertising->setScanResponse(true);
@@ -63,8 +72,41 @@ public:
         _started = false;
     }
 
+    // Function to initialize SD card
+    static bool initSDCard()
+    {
+        if (!SD.begin()) {
+            Serial.println("SD card initialization failed!");
+            return false;
+        }
+        Serial.println("SD card initialized.");
+        return true;
+    }
 
 private:
-    static  bool _started ;
+    static bool _started;
+
+    // BLE callback to handle received data
+    class BLECallbacks : public BLECharacteristicCallbacks
+    {
+        void onWrite(BLECharacteristic *pCharacteristic) override
+        {
+            String receivedData = pCharacteristic->getValue().c_str();
+            saveDataToFile(receivedData); // Save received data to file
+        }
+    };
+
+    // Function to save received data to a file on the SD card
+    static void saveDataToFile(const String &data)
+    {
+        File file = SD.open(FILE_NAME, FILE_APPEND);
+        if (!file) {
+            Serial.println("Failed to open file for writing");
+            return;
+        }
+        file.println(data);  // Write the data with a newline
+        file.close();        // Close the file
+    }
 };
+
 bool BLE::_started = false;
