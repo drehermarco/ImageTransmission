@@ -1,17 +1,28 @@
 /**
  * @file      SA868_ESPSendAudio_Example.ino
- * @author    Lewis He (lewishe@outlook.com)
+ * @author    Lewis He
  * @license   MIT
- * @copyright Copyright (c) 2023  Shenzhen Xin Yuan Electronic Technology Co., Ltd
+ * @copyright Copyright (c) 2023
  * @date      2024-01-05
  *
  */
+
 #include "LilyGo_TWR.h"
 #include "../Constants.h"
 #include <AceButton.h>
 #include <Arduino.h>
 #include <U8g2lib.h>
 #include <Wire.h>
+#include <SD.h>
+#include <SPI.h>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
+#define BLE_SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define BLE_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define BLE_DEVICE_NAME         "T-TWR"
+#define BLE_RECEIVED_FILE       "/received_data.txt"
 
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
@@ -20,7 +31,7 @@ using namespace ace_button;
 AceButton                           buttons[3];
 
 
-const uint8_t                       buttonPins [] = {
+const uint8_t buttonPins[] = {
     ENCODER_OK_PIN,
     BUTTON_PTT_PIN,
     BUTTON_DOWN_PIN
@@ -32,16 +43,16 @@ enum Button {
     Unknown
 };
 
+String receivedData = ""; // Buffer for incoming BLE data
 
-
-void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState){
+void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
     uint8_t id = button->getId();
-    if (id == 1){
+    if (id == 1) { // Check if the correct button is pressed
         switch (eventType) {
         case AceButton::kEventPressed:
-            radio.transmit();
-            playMessage(ESP2SA868_MIC, 0, "01110100 01100101 01110011 01110100");
-            radio.receive();
+            radio.transmit(); // Start transmission
+            sendImageBinary(ESP2SA868_MIC, 0); // Send the image binary data
+            radio.receive(); // Switch back to receiving mode
             break;
         case AceButton::kEventReleased:
             radio.receive();
@@ -52,13 +63,12 @@ void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState){
     }
 }
 
-void playMessage(uint8_t pin, uint8_t channel, String message)
-{
+void playMessage(uint8_t pin, uint8_t channel, const char* binaryData) {
     ledcAttachPin(pin, channel);
-    for (uint8_t i = 0; i < message.length(); i++) {
-        if (message[i] == '0') {
+    for (size_t i = 0; binaryData[i] != '\0'; i++) {
+        if (binaryData[i] == '0') {
             ledcWriteTone(channel, 1000);
-        } else {
+        } else { //it might play addiotional 1 at the end, TODO check
             ledcWriteTone(channel, 2000);
         }
         delay(250);
@@ -66,10 +76,74 @@ void playMessage(uint8_t pin, uint8_t channel, String message)
     ledcDetachPin(pin);
 }
 
+void sendImageBinary(uint8_t pin, uint8_t channel) {
+    if (!SD.begin()) {
+        Serial.println("Failed to initialize SD card.");
+        return;
+    }
 
+    File file = SD.open(BLE_RECEIVED_FILE);
+    if (!file) {
+        Serial.println("Failed to open binary file.");
+        return;
+    }
 
-void setup()
-{
+    Serial.println("Transmitting image data...");
+    while (file.available()) {
+        char buffer[128];
+        size_t bytesRead = file.readBytes(buffer, sizeof(buffer) - 1);
+        buffer[bytesRead] = '\0'; // Null-terminate the buffer
+        playMessage(pin, channel, buffer);
+    }
+
+    file.close();
+    Serial.println("Image data transmission complete.");
+}
+
+// BLE Callback to handle received data
+class BLECallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) override {
+        receivedData += pCharacteristic->getValue().c_str();
+        if (receivedData.endsWith("\n")) { // Check for end marker
+            saveDataToFile(receivedData); // Save received data to SD card
+            Serial.println("Data received via BLE and saved.");
+            receivedData = ""; // Clear buffer
+        }
+    }
+
+    void saveDataToFile(const String &data) {
+        File file = SD.open(BLE_RECEIVED_FILE, FILE_WRITE);
+        if (!file) {
+            Serial.println("Failed to open file for writing.");
+            return;
+        }
+        file.print(data);
+        file.close();
+        Serial.println("Data saved to file.");
+    }
+};
+
+void setupBLE() {
+    BLEDevice::init(BLE_DEVICE_NAME);  // Set the BLE device name
+    BLEServer *pServer = BLEDevice::createServer();  // Create BLE server
+    BLEService *pService = pServer->createService(BLE_SERVICE_UUID);  // Create BLE service
+
+    BLECharacteristic *pCharacteristic = pService->createCharacteristic(
+        BLE_CHARACTERISTIC_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
+    );
+
+    pCharacteristic->setCallbacks(new BLECallbacks()); // Attach callbacks
+    pService->start();  // Start BLE service
+
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(BLE_SERVICE_UUID);
+    BLEDevice::startAdvertising();
+
+    Serial.println("BLE setup complete. Waiting for data...");
+}
+
+void setup() {
     bool rlst = false;
 
     Serial.begin(115200);
@@ -130,19 +204,21 @@ void setup()
     }
     u8g2.setI2CAddress(addr << 1);
     u8g2.begin();
-    u8g2.setFontMode(0);               // write solid glyphs
-    u8g2.setFont(u8g2_font_cu12_hr);   // choose a suitable h font
-    u8g2.setCursor(0,20);              // set write position
-    u8g2.print("SENDER");              // use extra spaces here
-    u8g2.sendBuffer();                 // transfer internal memory to the display
+    u8g2.setFontMode(0);
+    u8g2.setFont(u8g2_font_cu12_hr);
+    u8g2.setCursor(0, 20);
+    u8g2.print("SENDER");
+    u8g2.sendBuffer();
+
     radio.setRxFreq(446200000);
     radio.setTxFreq(446200000);
     radio.setRxCXCSS(0);
     radio.setTxCXCSS(0);
+
+    setupBLE(); // Initialize BLE
 }
 
-void loop()
-{
+void loop() {
     for (uint8_t i = 0; i < COUNT(buttonPins); i++) {
         buttons[i].check();
     }
