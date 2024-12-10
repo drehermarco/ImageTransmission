@@ -18,4 +18,4 @@ def image_to_binary(image_path, output_txt):
     return binary_data
 
 
-binary_data = image_to_binary('image.png', 'binary.txt')
+binary_data = image_to_binary('../images/image1.png', 'binary.txt')
