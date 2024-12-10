@@ -1,8 +1,8 @@
 /**
  * @file      SA868_ESPSendAudio_Example.ino
- * @author    Lewis He
+ * @author    Lewis He (lewishe@outlook.com)
  * @license   MIT
- * @copyright Copyright (c) 2023
+ * @copyright Copyright (c) 2023  Shenzhen Xin Yuan Electronic Technology Co., Ltd
  * @date      2024-01-05
  *
  */
@@ -31,7 +31,7 @@ using namespace ace_button;
 AceButton                           buttons[3];
 
 
-const uint8_t buttonPins[] = {
+const uint8_t                       buttonPins [] = {
     ENCODER_OK_PIN,
     BUTTON_PTT_PIN,
     BUTTON_DOWN_PIN
@@ -204,12 +204,11 @@ void setup() {
     }
     u8g2.setI2CAddress(addr << 1);
     u8g2.begin();
-    u8g2.setFontMode(0);
-    u8g2.setFont(u8g2_font_cu12_hr);
-    u8g2.setCursor(0, 20);
-    u8g2.print("SENDER");
-    u8g2.sendBuffer();
-
+    u8g2.setFontMode(0);               // write solid glyphs
+    u8g2.setFont(u8g2_font_cu12_hr);   // choose a suitable h font
+    u8g2.setCursor(0,20);              // set write position
+    u8g2.print("SENDER");              // use extra spaces here
+    u8g2.sendBuffer();                 // transfer internal memory to the display
     radio.setRxFreq(446200000);
     radio.setTxFreq(446200000);
     radio.setRxCXCSS(0);
