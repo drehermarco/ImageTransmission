@@ -45,6 +45,25 @@ enum Button {
 
 String receivedData = ""; // Buffer for incoming BLE data
 
+// void clearSDCard() {
+//     // Check if SD card is initialized
+//     if (!SD.begin()) {
+//         Serial.println("Failed to initialize SD card.");
+//         return;
+//     }
+
+//     // Delete the existing file to clear it
+//     if (SD.exists(BLE_RECEIVED_FILE)) {
+//         if (SD.remove(BLE_RECEIVED_FILE)) {
+//             Serial.println("Previous file cleared successfully.");
+//         } else {
+//             Serial.println("Failed to clear previous file.");
+//         }
+//     } else {
+//         Serial.println("No previous file found. Ready for new data.");
+//     }
+// }
+
 void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
     uint8_t id = button->getId();
     if (id == 1) { // Check if the correct button is pressed
@@ -68,10 +87,10 @@ void playMessage(uint8_t pin, uint8_t channel, const char* binaryData) {
     for (size_t i = 0; binaryData[i] != '\0'; i++) {
         if (binaryData[i] == '0') {
             ledcWriteTone(channel, 1000);
-        } else { //it might play addiotional 1 at the end, TODO check
+        } else { //it might play additional 1 at the end, TODO check
             ledcWriteTone(channel, 2000);
         }
-        delay(250);
+        delay(500);
     }
     ledcDetachPin(pin);
 }
@@ -104,9 +123,9 @@ void sendImageBinary(uint8_t pin, uint8_t channel) {
 class BLECallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) override {
         receivedData += pCharacteristic->getValue().c_str();
-        if (receivedData.endsWith("\n")) { // Check for end marker
-            saveDataToFile(receivedData); // Save received data to SD card
-            Serial.println("Data received via BLE and saved.");
+        Serial.println("Data chunk received: " + receivedData);
+        if (receivedData.endsWith("\n") || receivedData.length() > 256) { // Arbitrary buffer size limit
+            saveDataToFile(receivedData);
             receivedData = ""; // Clear buffer
         }
     }
@@ -213,6 +232,8 @@ void setup() {
     radio.setTxFreq(446200000);
     radio.setRxCXCSS(0);
     radio.setTxCXCSS(0);
+
+    //clearSDCard();
 
     setupBLE(); // Initialize BLE
 }
