@@ -45,24 +45,24 @@ enum Button {
 
 String receivedData = ""; // Buffer for incoming BLE data
 
-// void clearSDCard() {
-//     // Check if SD card is initialized
-//     if (!SD.begin()) {
-//         Serial.println("Failed to initialize SD card.");
-//         return;
-//     }
+void clearSDCard() {
+    // Check if SD card is initialized
+    if (!SD.begin()) {
+        Serial.println("Failed to initialize SD card.");
+        return;
+    }
 
-//     // Delete the existing file to clear it
-//     if (SD.exists(BLE_RECEIVED_FILE)) {
-//         if (SD.remove(BLE_RECEIVED_FILE)) {
-//             Serial.println("Previous file cleared successfully.");
-//         } else {
-//             Serial.println("Failed to clear previous file.");
-//         }
-//     } else {
-//         Serial.println("No previous file found. Ready for new data.");
-//     }
-// }
+    // Delete the existing file to clear it
+    if (SD.exists(BLE_RECEIVED_FILE)) {
+        if (SD.remove(BLE_RECEIVED_FILE)) {
+            Serial.println("Previous file cleared successfully.");
+        } else {
+            Serial.println("Failed to clear previous file.");
+        }
+    } else {
+        Serial.println("No previous file found. Ready for new data.");
+    }
+}
 
 void handleEvent(AceButton *button, uint8_t eventType, uint8_t buttonState) {
     uint8_t id = button->getId();
@@ -233,7 +233,7 @@ void setup() {
     radio.setRxCXCSS(0);
     radio.setTxCXCSS(0);
 
-    //clearSDCard();
+    clearSDCard();
 
     setupBLE(); // Initialize BLE
 }
