@@ -23,6 +23,7 @@
 #define BLE_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define BLE_DEVICE_NAME         "T-TWR"
 #define BLE_RECEIVED_FILE       "/received_data.txt"
+#define BIT_DURATION 250
 
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
@@ -87,11 +88,15 @@ void playMessage(uint8_t pin, uint8_t channel, const char* binaryData) {
     for (size_t i = 0; binaryData[i] != '\0'; i++) {
         if (binaryData[i] == '0') {
             ledcWriteTone(channel, 1000);
+            Serial.println("Transmitting bit: 0");
         } else { //it might play additional 1 at the end, TODO check
             ledcWriteTone(channel, 2000);
+            Serial.println("Transmitting bit: 1");
         }
-        delay(500);
+        delay(BIT_DURATION);
     }
+    ledcWriteTone(channel, 0);  // Stop tone TODO
+    Serial.println("Image data transmission complete.");
     ledcDetachPin(pin);
 }
 
@@ -122,24 +127,38 @@ void sendImageBinary(uint8_t pin, uint8_t channel) {
 // BLE Callback to handle received data
 class BLECallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) override {
-        receivedData += pCharacteristic->getValue().c_str();
+        std::string value = pCharacteristic->getValue();
+        receivedData += value.c_str();
         Serial.println("Data chunk received: " + receivedData);
-        if (receivedData.endsWith("\n") || receivedData.length() > 256) { // Arbitrary buffer size limit
+        
+        // Check if we have a complete line or if the buffer is too large
+        if (receivedData.endsWith("\n") || receivedData.length() > 256) {
             saveDataToFile(receivedData);
             receivedData = ""; // Clear buffer
         }
     }
 
     void saveDataToFile(const String &data) {
-        File file = SD.open(BLE_RECEIVED_FILE, FILE_WRITE);
-        if (!file) {
-            Serial.println("Failed to open file for writing.");
-            return;
-        }
-        file.print(data);
-        file.close();
-        Serial.println("Data saved to file.");
+    Serial.println("Attempting to save data...");
+
+    if (!SD.begin()) {
+        Serial.println("SD Card initialization failed!");
+        return;
     }
+
+    File file = SD.open(BLE_RECEIVED_FILE, FILE_APPEND);
+    if (!file) {
+        Serial.println("Failed to open file for writing.");
+        return;
+    }
+
+    file.print(data);
+    file.flush();  // Ensure data is actually written
+    file.close();
+
+    Serial.println("Data successfully saved to SD card.");
+    }
+
 };
 
 void setupBLE() {
@@ -233,7 +252,11 @@ void setup() {
     radio.setRxCXCSS(0);
     radio.setTxCXCSS(0);
 
-    clearSDCard();
+    // Initialize SD card
+    if (!SD.begin()) {
+        Serial.println("SD Card initialization failed!");
+        while (1); // Halt if SD card initialization fails
+    }
 
     setupBLE(); // Initialize BLE
 }
