@@ -9,11 +9,11 @@
 
 #define RECEIVED_FILE "/received_image.bin"
 #define CHANNEL A0
-#define BIT_DURATION 250000  // 250ms in microseconds
+#define BIT_DURATION 100000  // 100 in microseconds
 #define AVG_WINDOW 10  // Number of samples for running average
 #define LOW_FREQ_THRESHOLD 900  // Hz threshold for low frequency (adjustable)
 #define HIGH_FREQ_THRESHOLD 1800  // Hz threshold for high frequency (adjustable)
-
+// Bigger thresholds for now because it's not precise
 using namespace ace_button;
 AceButton buttons[3];
 
@@ -30,7 +30,7 @@ String receivedBits = "";
 
 unsigned long lastZeroCrossing = 0;
 int lastSignal = 0;
-float runningAvg = 700;
+float runningAvg = 700; // The voltage reading is around 700 on initialization from testing
 int avgBuffer[AVG_WINDOW] = {700};
 int avgIndex = 0;
 unsigned long lastSampleTime = 0;
@@ -59,6 +59,7 @@ void saveDataToFile(const String &data) {
         return;
     }
 
+    file.seek(file.size()); // So that new data is appended instead of overwritting
     file.print(data);
     file.close();
     Serial.println("Data saved: " + data);
@@ -90,6 +91,20 @@ void setup() {
     bitMeasureStart = micros();
 }
 
+/**
+ * Extra notes:
+ *  In case of sampling too often/too small Bit Duration reuploading might not be possible
+ *  If that happens hold the boot button and press the reset button underneath it once
+ *  Upload shouldn't result in errors then
+ * 
+ *  Serial Prints might slow down the device in general
+ * 
+ *  The current demodulation method is quite unprecise and if set for too short bit duration too unprecise
+ *  The problem could lay in synchornization - it doesn't know when exactly to start receving, 
+ *  so it will count zero crossings of 2000Hz, but it will start counting for another bit before the bit is done sending,
+ *  but idk exactly
+ * 
+ */
 void loop() {
     unsigned long currentTime = micros();
     if (currentTime - lastSampleTime < SAMPLE_INTERVAL) {
@@ -119,6 +134,7 @@ void loop() {
         float frequency = (zeroCrossings / 2.0) / (BIT_DURATION / 1e6);
         Serial.println(frequency);
         
+        // To consider adding more precise thresholds, or moving them in general
         if (frequency >= LOW_FREQ_THRESHOLD && frequency < HIGH_FREQ_THRESHOLD) {
             receivedBits += "0";
             Serial.println("Stored bit: 0");
